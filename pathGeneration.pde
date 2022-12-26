@@ -1,7 +1,11 @@
 float maxVel = 200;
-float maxAccel = 1;
-float maxRotVel = 0.06;
+float maxAccel = 200;
+float maxRotVel = 10;
 float dt = 0.001;
+float curveIncrement = 1;
+boolean UI = false;
+FloatList profileToDraw = new FloatList();
+Curve seg = new Curve();
 ArrayList<PVector> pointsL = new ArrayList<PVector>();
 void disk(float x, float y){
   push();
@@ -14,14 +18,59 @@ void disk(float x, float y){
   pop();
 }
 void mousePressed(){
-  pointsL.add(new PVector(mouseX,mouseY));
+  if(UI){
+    profileToDraw=seg.generateVelocity();
+  }
+  if(!((inRect(280,585,320,595)&&!UI)||(inRect(280,485,320,495)&&UI)||(inRect(0,495,600,600)&&UI))){
+    pointsL.add(new PVector(mouseX,mouseY));
+  }
+  if(inRect(280,585,320,595)&&!UI){
+    UI=!UI;
+    profileToDraw=seg.generateVelocity();
+  }
+  if(inRect(280,485,320,495)&&UI){
+    UI=!UI;
+    
+  }
+}
+void drawUI(){
+  push();
+  if(!UI){
+    noStroke();
+    fill(20,20,40,200);
+    rect(0,595,600,600,4);
+    rect(280,585,320,595,4,4,0,0);
+    stroke(150,150,150,200);
+    strokeWeight(2);
+    line(290,592,300,588);
+    line(310,592,300,588);
+  }else{
+    noStroke();
+    fill(20,20,40,200);
+    rect(0,595-100,600,600,4);
+    rect(280,585-100,320,495,4,4,0,0);
+    stroke(150,150,150,200);
+    strokeWeight(2);
+    line(290,588-100,300,592-100);
+    line(310,588-100,300,592-100);
+    float size = profileToDraw.size();
+    for(int i = 0;i<size;i++){
+      point(i*(150/size)+50,575-profileToDraw.get(i)/4);
+    }
+  }
+  pop();
+}
+boolean inRect(float x0,float y0, float x1,float y1){
+  if(mouseX<=x1&&mouseX>=x0&&mouseY<=y1&&mouseY>=y0){
+    return true;
+  }
+  return false;
 }
 class Curve{
   float x0,x1,x2,x3,x4,x5,y0,y1,y2,y3,y4,y5=0;
   Curve(){
   }
   float scaleFactor = 1.2; 
-  FloatList v = new FloatList();
 void drawCurve(){
   for(int n = 0; n < pointsL.size()-1; n++){
     x0=pointsL.get(n).x;
@@ -43,7 +92,23 @@ void drawCurve(){
   }
   }
 }
-void update(){
+PVector pointOn(int n, float i){
+  x0=pointsL.get(n).x;
+  y0=pointsL.get(n).y;
+  x1=tangent(n,1).x;
+  y1=tangent(n,1).y;
+  x2=secondDerivitive(n,1).x;
+  y2=secondDerivitive(n,1).y;
+  x3=secondDerivitive(n+1,-1).x;
+  y3=secondDerivitive(n+1,-1).y;
+  x4=tangent(n+1,-1).x;
+  y4=tangent(n+1,-1).y;
+  x5=pointsL.get(n+1).x; 
+  y5=pointsL.get(n+1).y;
+  return new PVector(x0*pow((1-i),5)+5*x1*pow((1-i),4)*pow(i,1)+10*x2*pow((1-i),3)*pow(i,2)+10*x3*pow((1-i),2)*pow(i,3)+5*x4*pow((1-i),1)*pow(i,4)+x5*pow((1-i),0)*pow(i,5),y0*pow((1-i),5)+5*y1*pow((1-i),4)*pow(i,1)+10*y2*pow((1-i),3)*pow(i,2)+10*y3*pow((1-i),2)*pow(i,3)+5*y4*pow((1-i),1)*pow(i,4)+y5*pow((1-i),0)*pow(i,5));
+}
+FloatList update(){
+  FloatList v = new FloatList();
   for(int n = 0; n < pointsL.size()-1; n++){
     x0=pointsL.get(n).x;
     y0=pointsL.get(n).y;
@@ -66,9 +131,10 @@ void update(){
      PVector secondDerivitve = new PVector(d2x,d2y);
      PVector tempDerivitve = derivitive;
      float k = (tempDerivitve.cross(secondDerivitve).mag()/pow(derivitive.mag(),3));
-     v.append(min(maxRotVel/k,maxVel));
+     v.append(min(maxVel,maxRotVel/k));
   }
   }
+  return v;
 }
 PVector secondDerivitive(int i, int val){
   if(i+1<pointsL.size()){
@@ -129,16 +195,36 @@ PVector tangent(int i,int val){
     stroke(0,0,0);
       return new PVector((5*pointsL.get(i).x+tangentLength*cos(tangentAngle))/5,(5*pointsL.get(i).y+tangentLength*sin(tangentAngle))/5);
 }
-  void generateVelocity(){
-
+  FloatList generateVelocity(){
+    float currentDistance = 0;
+    FloatList vTrue = new FloatList();
+    FloatList v = update();
+    for(int n = 0; n < pointsL.size()-1; n++){
+      for(float i = 0; i <= 1; i+=dt){
+        currentDistance+=dist(pointOn(n,1).x,pointOn(n,1).y,pointOn(n,i+dt).x,pointOn(n,1+dt).y);
+        if(currentDistance>=curveIncrement){
+          vTrue.append(v.get(round((i+n)*1/dt)));
+          currentDistance=0;
+        }
+      }
+    }
+    vTrue.set(0,0);
+    for(int i = 0; i < vTrue.size()-1; i++){
+      vTrue.set(i+1,min(vTrue.get(i+1),sqrt(pow(vTrue.get(i),2)+2*curveIncrement*maxAccel)));
+    }
+    vTrue.set(vTrue.size()-1,0);
+    for(int i = vTrue.size()-1; i > 0; i--){
+      vTrue.set(i-1,min(vTrue.get(i-1),sqrt(pow(vTrue.get(i),2)+2*curveIncrement*maxAccel)));
+    }
+    return vTrue;
   }
 }
 
 void setup(){
   size(600,600);
-  //for(int i = 0; i<100;i++){
-  //  pointsL.add(new PVector(i*10,50*sin(i*50)+300));
-  //}
+  rectMode(CORNERS);
+  Curve seg = new Curve();
+  seg.generateVelocity();
 }
 void draw(){
   noStroke();
@@ -194,7 +280,7 @@ void draw(){
   noFill();
   line(150,0,0,150);
   line(450,600,600,450);
-  rect(0,0,600,600);
+  rect(0,0,600,700);
   stroke(193,63,33);
   line(400,500,400,400);
   line(500,400,400,400);
@@ -220,6 +306,6 @@ void draw(){
   line(200,100,200,200);
   line(100,200,200,200);
   pop();
-  Curve seg = new Curve();
   seg.drawCurve();
+  drawUI();
 }

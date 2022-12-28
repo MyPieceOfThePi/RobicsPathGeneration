@@ -1,12 +1,18 @@
 float maxVel = 200;
-float maxAccel = 200;
+float maxAccel = 150;
 float maxRotVel = 10;
 float dt = 0.001;
 float curveIncrement = 1;
 boolean UI = false;
 FloatList profileToDraw = new FloatList();
 Curve seg = new Curve();
+boolean cntrl = false;
+boolean z =false;
+boolean e = true;
+int editingPoint = -1;
+
 ArrayList<PVector> pointsL = new ArrayList<PVector>();
+ArrayList<PVector> pointsLPast = new ArrayList<PVector>();
 void disk(float x, float y){
   push();
   fill(0,0,0,30);
@@ -17,20 +23,82 @@ void disk(float x, float y){
   ellipse(x,height-y,17,17);
   pop();
 }
-void mousePressed(){
-  if(UI){
-    profileToDraw=seg.generateVelocity();
+void keyPressed(){
+  if(keyCode==17){
+    cntrl = true;
+    if(z==true){
+        pointsL=pointsLPast;
+    }
   }
-  if(!((inRect(280,585,320,595)&&!UI)||(inRect(280,485,320,495)&&UI)||(inRect(0,495,600,600)&&UI))){
+  if(keyCode==90){
+    z = true;
+    if(cntrl==true){
+      print(pointsLPast);
+        pointsL=pointsLPast;
+    }
+  }
+}
+void updateThread(){
+  push();
+  profileToDraw = seg.generateVelocity();
+  pop();
+}
+void mouseReleased(){
+  //thread("updateThread");
+}
+void keyReleased(){
+  if(keyCode==10){
+    cntrl = false;
+  }
+  if(keyCode==89){
+    z = false;
+  }
+}
+void mousePressed(){
+  boolean found = false;
+  if(e&&editingPoint<0){
+    for(int i = 0; i < pointsL.size()&&!found; i++){
+      if(inRect(pointsL.get(i).x-7.5,pointsL.get(i).y-7.5,pointsL.get(i).x+7.5,pointsL.get(i).y+7.5)){
+        if(mouseButton==37){
+          pointsLPast=pointsL;
+          editingPoint=i;
+        }else if(mouseButton==39){
+          pointsLPast=pointsL;
+          pointsL.remove(i);
+        }
+      }
+    }
+    for(int i = 0; i < pointsL.size()&&!found; i++){
+    if(mouseButton==37&&editingPoint<0){
+      for(float j = 0; j < 1&&!found; j += 0.02){
+        if(i<pointsL.size()-1){
+          if(dist(seg.pointOn(i,j).x,seg.pointOn(i,j).y,mouseX,mouseY)<15){
+            pointsLPast=pointsL;
+            pointsL.add(i+1,new PVector(mouseX,mouseY));
+            editingPoint = i+1;
+            found=true;
+          }
+        }
+      }
+      }
+    }
+  }
+  if(mouseButton==37){
+  if(!((inRect(280,585,320,595)&&!UI)||(inRect(280,485,320,495)&&UI)||(inRect(0,495,600,600)&&UI))&&editingPoint<0&&!found){
+    pointsLPast=pointsL;
     pointsL.add(new PVector(mouseX,mouseY));
+  }
+  if(UI&&!((inRect(280,585,320,595)&&!UI)||(inRect(280,485,320,495)&&UI)||(inRect(0,495,600,600)&&UI))){
+    //thread("updateThread");
   }
   if(inRect(280,585,320,595)&&!UI){
     UI=!UI;
-    profileToDraw=seg.generateVelocity();
+    drawUI();
+    //thread("updateThread");
   }
   if(inRect(280,485,320,495)&&UI){
     UI=!UI;
-    
+  }
   }
 }
 void drawUI(){
@@ -54,8 +122,9 @@ void drawUI(){
     line(290,588-100,300,592-100);
     line(310,588-100,300,592-100);
     float size = profileToDraw.size();
-    for(int i = 0;i<size;i++){
-      point(i*(150/size)+50,575-profileToDraw.get(i)/4);
+    for(int i = 0;i<size;i+=round(profileToDraw.size()/250)){
+      int size2 = round(min(i+size/250,size-1));
+      line(i*(250/size)+50,575-profileToDraw.get(i)/4,size2*(250/size)+50,575-profileToDraw.get(size2)/4);
     }
   }
   pop();
@@ -72,6 +141,7 @@ class Curve{
   }
   float scaleFactor = 1.2; 
 void drawCurve(){
+  push();
   for(int n = 0; n < pointsL.size()-1; n++){
     x0=pointsL.get(n).x;
     y0=pointsL.get(n).y;
@@ -91,6 +161,7 @@ void drawCurve(){
      point(x0*pow((1-i),5)+5*x1*pow((1-i),4)*pow(i,1)+10*x2*pow((1-i),3)*pow(i,2)+10*x3*pow((1-i),2)*pow(i,3)+5*x4*pow((1-i),1)*pow(i,4)+x5*pow((1-i),0)*pow(i,5),y0*pow((1-i),5)+5*y1*pow((1-i),4)*pow(i,1)+10*y2*pow((1-i),3)*pow(i,2)+10*y3*pow((1-i),2)*pow(i,3)+5*y4*pow((1-i),1)*pow(i,4)+y5*pow((1-i),0)*pow(i,5));
   }
   }
+  pop();
 }
 PVector pointOn(int n, float i){
   x0=pointsL.get(n).x;
@@ -169,7 +240,6 @@ PVector secondDerivitive(int i, int val){
   return tempSecDeriv.sub(pointsL.get(i)).add((tangent(i,-1).mult(2)));
 }
 PVector tangent(int i,int val){
-  stroke(255,0,0);
   if(i+1<pointsL.size()){
     if(i-1>=0){
       float b = dist(pointsL.get(i).x,pointsL.get(i).y,pointsL.get(i-1).x,pointsL.get(i-1).y);
@@ -178,21 +248,18 @@ PVector tangent(int i,int val){
       float angleTangent = atan2((pointsL.get(i).y-b*sin(angleA))-pointsL.get(i-1).y,(pointsL.get(i).x-b*cos(angleA))-pointsL.get(i-1).x);
       float tangentLength = 0.2*val * scaleFactor * min(b,a);
       //line(pointsL.get(i).x,pointsL.get(i).y,pointsL.get(i).x+tangentLength*cos(angleTangent),pointsL.get(i).y+tangentLength*sin(angleTangent));
-      stroke(0,0,0);
       return new PVector((pointsL.get(i).x+tangentLength*cos(angleTangent)),(pointsL.get(i).y+tangentLength*sin(angleTangent)));
     }
     float tangentAngle = atan2(pointsL.get(i+1).y-pointsL.get(i).y,pointsL.get(i+1).x-pointsL.get(i).x);
     float a = dist(pointsL.get(i).x,pointsL.get(i).y,pointsL.get(i+1).x,pointsL.get(i+1).y);
     float tangentLength = val*0.2*scaleFactor*a;
     //line(pointsL.get(i).x,pointsL.get(i).y,pointsL.get(i).x+tangentLength*cos(tangentAngle),pointsL.get(i).y+tangentLength*sin(tangentAngle));
-    stroke(0,0,0);
     return new PVector((5*pointsL.get(i).x+tangentLength*cos(tangentAngle))/5,(5*pointsL.get(i).y+tangentLength*sin(tangentAngle))/5);
   }
     float tangentAngle = atan2(pointsL.get(i-1).y-pointsL.get(i).y,pointsL.get(i-1).x-pointsL.get(i).x);
     float b = dist(pointsL.get(i).x,pointsL.get(i).y,pointsL.get(i-1).x,pointsL.get(i-1).y);
     float tangentLength = val*0.2*scaleFactor*b;
     //line(pointsL.get(i).x,pointsL.get(i).y,pointsL.get(i).x+tangentLength*cos(tangentAngle),pointsL.get(i).y+tangentLength*sin(tangentAngle));
-    stroke(0,0,0);
       return new PVector((5*pointsL.get(i).x+tangentLength*cos(tangentAngle))/5,(5*pointsL.get(i).y+tangentLength*sin(tangentAngle))/5);
 }
   FloatList generateVelocity(){
@@ -203,15 +270,18 @@ PVector tangent(int i,int val){
       for(float i = 0; i <= 1; i+=dt){
         currentDistance+=dist(pointOn(n,1).x,pointOn(n,1).y,pointOn(n,i+dt).x,pointOn(n,1+dt).y);
         if(currentDistance>=curveIncrement){
-          vTrue.append(v.get(round((i+n)*1/dt)));
+          int s=vTrue.size();
+          if(s==0){
+            vTrue.append(0);
+          }else{
+          int j = round((i+n)*1/dt);
+          vTrue.append(min(v.get(j),sqrt(pow(vTrue.get(vTrue.size()-1),2)+2*curveIncrement*maxAccel)));
+          }
           currentDistance=0;
         }
       }
     }
     vTrue.set(0,0);
-    for(int i = 0; i < vTrue.size()-1; i++){
-      vTrue.set(i+1,min(vTrue.get(i+1),sqrt(pow(vTrue.get(i),2)+2*curveIncrement*maxAccel)));
-    }
     vTrue.set(vTrue.size()-1,0);
     for(int i = vTrue.size()-1; i > 0; i--){
       vTrue.set(i-1,min(vTrue.get(i-1),sqrt(pow(vTrue.get(i),2)+2*curveIncrement*maxAccel)));
@@ -308,4 +378,26 @@ void draw(){
   pop();
   seg.drawCurve();
   drawUI();
+  if(e){
+    for(int i = 0; i < pointsL.size(); i++){
+      push();
+      stroke(30,80,30,100);
+      strokeWeight(15);
+      point(pointsL.get(i).x,pointsL.get(i).y);
+      stroke(30,80,30,255);
+      strokeWeight(7);
+      point(pointsL.get(i).x,pointsL.get(i).y);
+      pop();
+    }
+  }
+  if(editingPoint>=0){
+    pointsL.set(editingPoint,new PVector(mouseX, mouseY));
+  }
+  if(!mousePressed){
+    editingPoint = -1;
+  }
+  push();
+  fill(0,0,0,50);
+  ellipse(mouseX,mouseY,15,15);
+  pop();
 }
